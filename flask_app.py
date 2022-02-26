@@ -39,15 +39,18 @@ class Users(db.Model):
     username = db.Column(db.String(50),nullable=False)
     email = db.Column(db.String(50),nullable=False,unique=True)
     password = db.Column(db.String,nullable=False)
+    contact_number = db.Column(db.String,nullable=False)
+    otp = db.Column(db.String,nullable=True)
 
-    def __init__(self,username,password,email):
+    def __init__(self,username,password,email,contact_number):
         self.username = username
         self.password = password
         self.email = email
-    
+        self.contact_number = contact_number
+
 class UserSchema(marsh.Schema):
     class Meta:
-        fields = ('username','email')
+        fields = ('username','email','contact_number')
     
 singleUser = UserSchema()
 multiUser = UserSchema(many=True)
@@ -65,6 +68,7 @@ signup_parser = reqparse.RequestParser()
 signup_parser.add_argument('username',type=str,required=True)
 signup_parser.add_argument('password',type=str,required=True)
 signup_parser.add_argument('email',type=str,required=True)
+signup_parser.add_argument('contact_number',type=str,required=True)
 
 @api.route('/signup')
 class Signup(Resource):
@@ -74,8 +78,9 @@ class Signup(Resource):
         username = args['username']
         password = generate_password_hash(args['password'])
         email = args['email']
+        contact_number = args['contact_number']
 
-        newUser = Users(username=username, password=password,email=email)
+        newUser = Users(username=username, password=password,email=email,contact_number=contact_number)
         
         db.session.add(newUser)
         db.session.commit()
@@ -84,7 +89,7 @@ class Signup(Resource):
 
 
 
-@api.route('/send/<username>')
+@api.route('/sendMail/<username>')
 class SendEmailRoute(Resource):
     def get(self, username):
         if Users.query.filter_by(username=username).count():
@@ -92,7 +97,6 @@ class SendEmailRoute(Resource):
             doc = (render_template('email.html', user=user))
             x = sendemail.delay(username,doc)
             res = celery.AsyncResult(x.task_id).state
-            # print(res)
             return {
                 "task_id":x.task_id,
                 "description":"msg sent",
@@ -103,6 +107,7 @@ class SendEmailRoute(Resource):
             return ({"Error":error['404'],"Description": "User not found"}), 404
 
 
+
 @celery.task(name="flask_app.sendemail",bind=True)
 def sendemail(self,username,doc):
     try:
@@ -111,23 +116,22 @@ def sendemail(self,username,doc):
     except Exception as exc:
         self.retry(exc,countdown=10)
 
-@api.route('/<task_id>')
-class result(Resource):
-    def get(self,task_id):
-        return celery.AsyncResult(task_id).state
-
-@api.route('/sendOtp/<int:number>')
+@api.route('/sendOtp/<username>')
 class SendOTP(Resource):
-    def get(self,number):
-        otp = random.randint(1000,9999)
-        x=sendOTP.delay(otp,number)
-        res = celery.AsyncResult(x.task_id).state
-            # print(res)
-        return {
-            "task_id":x.task_id,
-            "description":"msg sent",
-            "result":res
-        }
+    def get(self,username):
+        if Users.query.filter_by(username=username).count():
+            user = Users.query.filter_by(username=username).first()
+            number = user.contact_number
+            genrated_otp = random.randint(1000,9999)
+            user.otp = genrated_otp
+            x=sendOTP.delay(genrated_otp,number)
+            res = celery.AsyncResult(x.task_id).state
+            return {
+                "task_id":x.task_id,
+                "description":"Otp sent",
+                "result":res
+            }
+
 
 @celery.task(name='flask_app.sendtp',bind=True)
 def sendOTP(self,otp,number):
@@ -135,6 +139,12 @@ def sendOTP(self,otp,number):
         SendOtp(otp,number)
     except Exception as exc:
         self.retry(exc,countdown=10)
+
+
+@api.route('/<task_id>')
+class result(Resource):
+    def get(self,task_id):
+        return celery.AsyncResult(task_id).state
 
 if __name__ == '__main__':
     app.run(debug=True)
