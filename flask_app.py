@@ -81,7 +81,7 @@ class UserSchema(marsh.Schema):
     class Meta:
         fields = ('firstname','lastname','email','contact_number')
     
-singleUser = UserSchema()
+singleUserv2 = UserSchema()
 
 # api = Api(app)
 mainapi = Api(app)
@@ -215,12 +215,14 @@ class Signup(Resource):
         email = args['email']
         contact_number = args['contact_number']
 
-        newUser = UsersV2(firstname=firstname, lastname=lastname, password=password,email=email,contact_number=contact_number)
-        
-        db.session.add(newUser)
+        newUser_V2 = UsersV2(firstname=firstname, lastname=lastname, password=password,email=email,contact_number=contact_number)
+        newUser_V1 = Users(username = "".join(username), email = email, contact_number = contact_number,password = password)
+
+        db.session.add(newUser_V2)
+        db.session.add(newUser_V1)
         db.session.commit()
 
-        return singleUser.jsonify(newUser)
+        return singleUserv2.jsonify(newUser_V2)
 
 
 '''' Common routes for both versions of api'''
