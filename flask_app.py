@@ -10,9 +10,12 @@ from celery import Celery
 from celery.result import AsyncResult
 from textmsg import SendOtp
 import random
-from time import time
+from time import time, sleep
 
 from error_codes import error
+
+#for caching 
+from caching import cached
 
 from mailer import SendMail
 load_dotenv()
@@ -59,22 +62,23 @@ multiUser = UserSchema(many=True)
 
 
 # api = Api(app)
-mainapi = Api(app)
-api= Namespace('version1',description='v1')
-apiv2= Namespace('version2',description='v2')
+api = Api(app)
+# api= Namespace('version1',description='v1')
+# apiv2= Namespace('version2',description='v2')
 
-mainapi.add_namespace(api,path='/v1')
-mainapi.add_namespace(apiv2,path='/v2')
+# mainapi.add_namespace(api,path='/v1')
+# mainapi.add_namespace(apiv2,path='/v2')
 
 
 @api.route('/home')
 class Home(Resource):
     def get(self):
         return 'Helloo! This is version 1'
-@apiv2.route('/home')
-class Home(Resource):
-    def get(self):
-        return 'Helloo! This is version 2'
+# @apiv2.route('/home')
+# class Home(Resource):
+#     @cached
+#     def get(self):
+#         return 'Helloo! This is version 2'
 
 
 # parsers
@@ -200,8 +204,6 @@ class LoginOtp(Resource):
                 "Description":"otp invalid"
             },400
 
-        
-
 @celery.task(name='flask_app.sendotp',bind=True)
 def sendOTP(self,otp,number):
     try:
@@ -214,6 +216,22 @@ def sendOTP(self,otp,number):
 class result(Resource):
     def get(self,task_id):
         return celery.AsyncResult(task_id).state
+
+@api.route('/get/<username>')
+class TestingCache(Resource):
+    @cached
+    def get(self,username):
+        sleep(5)
+        if Users.query.filter_by(username=username).count:
+            targetUser= Users.query.filter_by(username=username).first()
+            return {
+                'username':username,
+                'email':targetUser.email,
+
+            }
+        return {
+            "msg":"No user with username"
+        }
 
 if __name__ == '__main__':
     app.run(debug=True)
