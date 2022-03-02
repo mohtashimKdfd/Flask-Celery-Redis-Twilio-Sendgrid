@@ -17,6 +17,9 @@ from error_codes import error
 #for caching 
 from caching import cached
 
+#for parsers
+from parsers import signup_parser, login_parser, OtpLogin
+
 from mailer import SendMail
 load_dotenv()
 
@@ -96,27 +99,6 @@ mainapi.add_namespace(apiv2,path='/v2')
 class Home(Resource):
     def get(self):
         return 'Helloo! This is a common route for all versions'
-@apiv2.route('/home')
-class Home(Resource):
-    @cached
-    def get(self):
-        return 'Helloo! This is version 2'
-
-
-# parsers
-signup_parser = reqparse.RequestParser()
-signup_parser.add_argument('username',type=str,required=True)
-signup_parser.add_argument('password',type=str,required=True)
-signup_parser.add_argument('email',type=str,required=True)
-signup_parser.add_argument('contact_number',type=str,required=True)
-
-login_parser = reqparse.RequestParser()
-login_parser.add_argument('email',type=str,required=True)
-login_parser.add_argument('password',type=str,required=True)
-
-OtpLogin = reqparse.RequestParser()
-OtpLogin.add_argument('email',type=str,required=True)
-OtpLogin.add_argument('otp',type=str,required=True)
 
 '''' version 1 '''
 @api.route('/signup')
@@ -179,6 +161,7 @@ class LoginOtp(Resource):
             return {
                 "Description":"otp invalid"
             },400
+
 '''' version 1 '''
 @celery.task(name='flask_app.sendotp',bind=True)
 def sendOTP(self,otp,number):
