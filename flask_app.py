@@ -13,6 +13,8 @@ import random
 from time import time, sleep
 
 from error_codes import error
+#timedelta
+from datetime import timedelta
 
 #for caching 
 from caching import cached
@@ -21,6 +23,10 @@ from caching import cached
 from parsers import signup_parser, login_parser, OtpLogin
 
 from mailer import SendMail
+
+#for celery cron job
+from celery.schedules import crontab
+
 load_dotenv()
 
 DB_PATH = os.getenv('SQL_ALCHEMY_URI')
@@ -32,9 +38,17 @@ app = Flask(__name__)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_DATABASE_URI"] = "{}".format(DB_PATH)
 app.config['CELERY_BROKER_URL']='{}'.format(CELERY_BROKER_URLL)
-app.config['CELERY_RESULT_BACKEND']='{}'.format(CELERY_RESULT_BACKENDD)
+app.config['result_backend']='{}'.format(CELERY_RESULT_BACKENDD)
 celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
 celery.conf.update(app.config)
+celery.conf['beat_schedule'] = {
+    # Executes every minute
+    'periodic_task-every-minute': {
+        'task': 'periodic_otp_destroyer',
+        'schedule': crontab(minute='*/1')
+    }
+}
+
 
 
 ################ Models ##################
@@ -264,6 +278,31 @@ class TestingCache(Resource):
         return {
             "msg":"No user with username"
         }
+import loguru
+import os
+dirpath = os.path.dirname(os.path.realpath(__file__))
+filename = os.path.join(dirpath,'Main.log')
+#Some epic things with celery
+loguru.logger.add(
+    "{}".format(filename),
+    level="INFO",
+    format="{time} {level} {message}",
+    retention='1 minute',
+)
+
+@celery.task(name='periodic_otp_destroyer')
+def taskFunction():
+    loguru.logger.info('Loguru is up, running and saving otp notifications')
+    allUsers = Users.query.all()
+    for user in allUsers:
+        curr_time = time()
+        if user.otp:
+            if curr_time-user.otp_released_time>100:
+                loguru.logger.info("{}'s otp is being destroyed".format(user.username))
+                user.otp =None
+                db.session.commit()
+                loguru.logger.info("{}'s otp has been destroyed.".format(user.username))
+
 
 if __name__ == '__main__':
     app.run(debug=True)
